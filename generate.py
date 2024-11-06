@@ -13,7 +13,7 @@ if __name__ == "__main__":
     model.eval()
     
     diff = GaussianDiffusion(device, model, num_timesteps=model.cfg.num_timesteps)
-    samples = diff.generate((4, 1, 28, 28), y=0, classifier_guidance_strength=4.0)
+    samples = diff.generate((4, 1, 28, 28), y=0, classifier_guidance_strength=3.0)
     os.makedirs("plots", exist_ok=True)
     imgs = samples.cpu().numpy().squeeze()
     for i,img in enumerate(imgs):
