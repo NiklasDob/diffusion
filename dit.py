@@ -83,14 +83,33 @@ class PatchEmbed(nn.Module):
         self.patch_size = patch_size
         self.in_channels = in_channels
         self.hidden_size = hidden_size
-        self.num_patches = (input_size // patch_size) ** 2
+        self.num_patches_per_dim = input_size // patch_size  # Number of patches along one dimension
+        self.num_patches = self.num_patches_per_dim ** 2
         self.proj = nn.Conv2d(in_channels, hidden_size, kernel_size=patch_size, stride=patch_size, bias=bias)
         self.norm = nn.LayerNorm(hidden_size)
 
+        # Separate embeddings for row and column positions
+        self.row_embed = nn.Embedding(self.num_patches_per_dim, hidden_size)
+        self.col_embed = nn.Embedding(self.num_patches_per_dim, hidden_size)
+
     def forward(self, x):
-        x = self.proj(x)
-        x = x.flatten(2)
-        x = x.transpose(-1, -2)
+        # Apply the convolution to extract patch embeddings
+        x = self.proj(x)  # (batch_size, hidden_size, num_patches_per_dim, num_patches_per_dim)
+        x = x.flatten(2)  # Flatten height and width into a single dimension (batch_size, hidden_size, num_patches)
+        x = x.transpose(-1, -2)  # (batch_size, num_patches, hidden_size)
+
+        # Generate row and column indices
+        row_indices = torch.arange(self.num_patches_per_dim, device=x.device).unsqueeze(1).repeat(1, self.num_patches_per_dim)
+        col_indices = torch.arange(self.num_patches_per_dim, device=x.device).unsqueeze(0).repeat(self.num_patches_per_dim, 1)
+
+        # Apply embeddings for row and column positions
+        row_embedding = self.row_embed(row_indices.flatten()).unsqueeze(0)  # (1, num_patches, hidden_size)
+        col_embedding = self.col_embed(col_indices.flatten()).unsqueeze(0)  # (1, num_patches, hidden_size)
+
+        # Add positional embeddings to the patch embeddings
+        x = x + row_embedding + col_embedding
+
+        # Apply layer normalization
         x = self.norm(x)
 
         return x

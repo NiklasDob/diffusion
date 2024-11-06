@@ -8,27 +8,41 @@ class GaussianDiffusion:
         self.model = model.to(device)
         self.num_timesteps = num_timesteps
         self.clip_sample = clip_sample
-        self.final_alpha_cumprod = torch.tensor(1.0).to(device)
 
         # Define the beta schedule and calculate alpha values
-        self.beta = torch.linspace(beta_start, beta_end, num_timesteps).to(device)
-        self.alpha = 1.0 - self.beta
-        self.alpha_cumprod = torch.cumprod(self.alpha, dim=0)
-        self.alpha_cumprod_prev = torch.ones_like(self.alpha_cumprod)
-        self.alpha_cumprod_prev[1:] = self.alpha_cumprod_prev[:-1].clone()
+        self.betas = torch.linspace(beta_start, beta_end, num_timesteps).to(device)
+        self.alphas = 1. - self.betas
+        self.alphas_cumprod = torch.cumprod(self.alphas, axis=0)
+        self.alphas_cumprod_prev = F.pad(self.alphas_cumprod[:-1], (1, 0), value=1.0)
+        self.sqrt_recip_alphas = torch.sqrt(1.0 / self.alphas)
+        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
+        self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - self.alphas_cumprod)
+        self.posterior_variance = self.betas * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
 
-    @torch.no_grad()
+    def get_index_from_list(self, vals, t, x_shape):
+        """ 
+        Returns a specific index t of a passed list of values vals
+        while considering the batch dimension.
+        """
+        batch_size = t.shape[0]
+        out = vals.gather(-1, t)
+        return out.reshape(batch_size, *((1,) * (len(x_shape) - 1))).to(t.device)
+
     def q(self, x_0, t):
+        """ 
+        Takes an image and a timestep as input and 
+        returns the noisy version of it
         """
-        Adds noise to the image at a given timestep t.
-        x_0: the original image
-        t: the timestep for noise level
-        Returns the noisy image at timestep t
-        """
-        alpha_t = self.alpha_cumprod[t].view(-1, 1, 1, 1)
-        noise = torch.randn_like(x_0).to(self.device)
-        x_t = torch.sqrt(alpha_t) * x_0 + torch.sqrt(1 - alpha_t) * noise
-        return x_t, noise
+        device = x_0.device
+        noise = torch.randn_like(x_0)
+        sqrt_alphas_cumprod_t = self.get_index_from_list(self.sqrt_alphas_cumprod, t, x_0.shape)
+        sqrt_one_minus_alphas_cumprod_t = self.get_index_from_list(
+            self.sqrt_one_minus_alphas_cumprod, t, x_0.shape
+        )
+        # mean + variance
+        return sqrt_alphas_cumprod_t.to(device) * x_0.to(device) \
+        + sqrt_one_minus_alphas_cumprod_t.to(device) * noise.to(device), noise.to(device)
+
 
     @torch.no_grad()
     def sample_timesteps(self, batch_size):
@@ -53,7 +67,7 @@ class GaussianDiffusion:
 
 
     @torch.no_grad()
-    def generate(self, shape, y=None, eta=1.0, generator=None, classifier_guidance_strength=1.0):
+    def generate(self, shape, y=None, eta=1.0, generator=None, classifier_guidance_strength=4.0):
         """
         Samples a new image by running the reverse process.
         shape: the shape of the image to generate
@@ -76,8 +90,8 @@ class GaussianDiffusion:
             else:
                 predicted_noise = self.model(x_t, ts, y=y_val)
 
-            alpha_t_c = self.alpha_cumprod[t].view(-1, 1, 1, 1)
-            alpha_t = self.alpha[ts].view(-1, 1, 1, 1)
+            alpha_t_c = self.alphas_cumprod[t].view(-1, 1, 1, 1)
+            alpha_t = self.alphas[ts].view(-1, 1, 1, 1)
 
             # if t>1:
             #     z = torch.randn_like(x_t)
@@ -85,20 +99,20 @@ class GaussianDiffusion:
             #     z = torch.zeros_like(x_t)
 
             # x_t = (1 / torch.sqrt(alpha_t)) * (x_t - ((1-alpha_t) / torch.sqrt(1-alpha_t_cum)) * predicted_noise)  + torch.sqrt(var) *  z
-            if t == 1:
+            if t == 0:
                 z = torch.zeros_like(x_t)  
             else:
                 z = torch.randn_like(x_t)
 
             # x = 1/np.sqrt(alphas[t])*(x - ((betas[t]) / np.sqrt(1-alphas_prod[t]))*eps) + betas[t]*z
-            beta_t = self.beta[ts].view(-1, 1, 1, 1)
-            sigma_t = eta * torch.sqrt(beta_t * (1 - self.alpha_cumprod_prev[ts].view(-1, 1, 1, 1)) / (1 - self.alpha_cumprod[ts].view(-1, 1, 1, 1)))
+            beta_t = self.betas[ts].view(-1, 1, 1, 1)
+            sigma_t = eta * torch.sqrt(beta_t * (1 - self.alphas_cumprod_prev[ts].view(-1, 1, 1, 1)) / (1 - self.alphas_cumprod[ts].view(-1, 1, 1, 1)))
 
             # x_t = (1 / torch.sqrt(alpha_t)) * (x_t - ((beta_t) / torch.sqrt(1-alpha_t_c)) * predicted_noise)  + torch.sqrt(beta_t) *  z
             x_t = (1 / torch.sqrt(alpha_t)) * (x_t - (beta_t / torch.sqrt(1 - alpha_t_c)) * predicted_noise) + sigma_t * z
 
             # print(x_t)
-            x_t = torch.clamp(x_t, -1, 1)
+            # x_t = torch.clamp(x_t, -1, 1)
 
         # Rescale x_t to [0, 1] range if normalized output is desired
         x_t = torch.clamp(x_t, -1, 1)
