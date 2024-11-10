@@ -19,29 +19,18 @@ class GaussianDiffusion:
         self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - self.alphas_cumprod)
         self.posterior_variance = self.betas * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
 
-    def get_index_from_list(self, vals, t, x_shape):
-        """ 
-        Returns a specific index t of a passed list of values vals
-        while considering the batch dimension.
-        """
-        batch_size = t.shape[0]
-        out = vals.gather(-1, t)
-        return out.reshape(batch_size, *((1,) * (len(x_shape) - 1))).to(t.device)
 
     def q(self, x_0, t):
         """ 
         Takes an image and a timestep as input and 
         returns the noisy version of it
         """
-        device = x_0.device
+        
         noise = torch.randn_like(x_0)
-        sqrt_alphas_cumprod_t = self.get_index_from_list(self.sqrt_alphas_cumprod, t, x_0.shape)
-        sqrt_one_minus_alphas_cumprod_t = self.get_index_from_list(
-            self.sqrt_one_minus_alphas_cumprod, t, x_0.shape
-        )
+        sqrt_alphas_cumprod_t = self.sqrt_alphas_cumprod[t].view(-1,1,1,1)
+        sqrt_one_minus_alphas_cumprod_t = self.sqrt_one_minus_alphas_cumprod[t].view(-1,1,1,1)
         # mean + variance
-        return sqrt_alphas_cumprod_t.to(device) * x_0.to(device) \
-        + sqrt_one_minus_alphas_cumprod_t.to(device) * noise.to(device), noise.to(device)
+        return sqrt_alphas_cumprod_t* x_0 + sqrt_one_minus_alphas_cumprod_t * noise, noise
 
 
     @torch.no_grad()

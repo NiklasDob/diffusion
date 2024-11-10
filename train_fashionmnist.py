@@ -18,16 +18,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 transform = transforms.Compose([transforms.ToTensor(), transforms.Lambda(lambda x: x * 2 - 1)])
 cwd = os.path.dirname(__file__)
 data_path = os.path.join(cwd, "data")
-train_dataset = datasets.MNIST(data_path, download=True, train=True, transform=transform)
+train_dataset = datasets.FashionMNIST(data_path, download=True, train=True, transform=transform)
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
-val_dataset = datasets.MNIST(data_path, download=True, train=False, transform=transform)
+val_dataset = datasets.FashionMNIST(data_path, download=True, train=False, transform=transform)
 val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=False)
 
-# Create diffusion model
-diffusion_steps = 1000
 num_timesteps = 1000
 num_classes = 10
-model_cfg = get_s_model(num_timesteps=num_timesteps, num_classes=num_classes)
+num_channels = 1
+img_size = 28
+model_cfg = get_s_model(input_size=img_size, in_channels=num_channels, num_timesteps=num_timesteps, num_classes=num_classes)
 model = DiT(model_cfg).to(device)
 start_epoch = 0 
 # model, checkpoint = DiT.load("checkpoints/model-3.pt")
@@ -35,6 +35,8 @@ start_epoch = 0
 model = model.to(device)
 diffusion = GaussianDiffusion(device, model, num_timesteps=num_timesteps)
 # Train model
+ckpt_path = os.path.join(cwd, "checkpoints", "fashing_mnist")
+os.makedirs(ckpt_path, exist_ok=True)
 print(model.get_number_parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.1)
 old_loss = 100
@@ -70,11 +72,10 @@ for epoch in range(start_epoch,20):
     if mean_val_loss < old_loss:
         print(f"Saving model new model Train Loss: {mean_train_loss:.4f}")
         old_loss = mean_train_loss
-        ckpt_path = os.path.join(cwd, "checkpoints")
-        os.makedirs(ckpt_path, exist_ok=True)
+       
         model.save(os.path.join(ckpt_path, f"model-{epoch+1}.pt"), **{"train_loss": old_loss, "epoch": epoch})
         
-        samples = diffusion.generate((4, 1, 28, 28))
+        samples = diffusion.generate((4, num_channels, img_size, img_size))
         os.makedirs("plots", exist_ok=True)
         imgs = samples.cpu().numpy().squeeze()
         for i, img in enumerate(imgs):

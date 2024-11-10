@@ -15,9 +15,10 @@ class ModelConfig:
     class_dropout_prob: float
     num_classes: int
     num_timesteps: int
+    t_continuous: bool
 
-def get_s_model(**kwargs):
-    return ModelConfig(input_size=28, patch_size=4, in_channels=1, hidden_size=128, depth=6, num_heads=8, class_dropout_prob=0.1, **kwargs)
+def get_s_model(input_size=28, in_channels=1, **kwargs):
+    return ModelConfig(input_size=input_size, patch_size=4, in_channels=in_channels, hidden_size=128, depth=4, num_heads=8, class_dropout_prob=0.1, **kwargs)
 
 def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
@@ -47,9 +48,13 @@ class DiTBlock(nn.Module):
         return x
 
 class TimestepEmbedder(nn.Module):
-    def __init__(self, hidden_size, num_timesteps=1000):
+    def __init__(self, hidden_size, num_timesteps=1000, t_continous : bool =False):
         super().__init__()
-        self.emb = nn.Embedding(num_timesteps, hidden_size)
+        self.t_continous = t_continous
+        if self.t_continous:
+            self.emb = nn.Linear(1, hidden_size)
+        else:
+            self.emb = nn.Embedding(num_timesteps, hidden_size)
         self.mlp = nn.Sequential(
             nn.Linear(hidden_size, 4 * hidden_size),
             nn.GELU(),
@@ -160,7 +165,7 @@ class DiT(nn.Module):
         self.cfg = model_config
 
         self.x_embedder = PatchEmbed(self.cfg.input_size, self.cfg.patch_size, self.cfg.in_channels, self.cfg.hidden_size, bias=True)
-        self.t_embedder = TimestepEmbedder(self.cfg.hidden_size, self.cfg.num_timesteps)
+        self.t_embedder = TimestepEmbedder(self.cfg.hidden_size, self.cfg.num_timesteps, t_continous=self.cfg.t_continuous)
         self.y_embedder = LabelEmbedder(self.cfg.num_classes, self.cfg.hidden_size)
 
         self.blocks = nn.ModuleList([
