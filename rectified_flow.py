@@ -13,8 +13,8 @@ class RectifiedFlow:
     def noisify(self, z1):
         z0 = torch.randn_like(z1)
 
-        dt = 1 / self.num_timesteps
-        t = torch.rand((z1.shape[0], 1), device=self.device) * (1 - dt) + dt 
+        # dt = 1 / self.num_timesteps
+        t = torch.rand((z1.shape[0], 1), device=self.device) #* (1 - dt) + dt 
         t_ = t.view(-1, 1, 1, 1)
         z_t =  t_ * z1 + (1. - t_) * z0  
         target = z1 - z0
@@ -26,13 +26,10 @@ class RectifiedFlow:
         Performs a single training step.
         """
 
-        # Forward diffusion: Add noise to input image
         x_t, t, flow = self.noisify(x_0)
 
-        # Predict the noise using the model
         predicted_noise = self.model(x_t, t, y=y)
 
-        # Loss: Mean Squared Error between predicted and actual noise
         loss = F.mse_loss(predicted_noise, flow)
         return loss
         
@@ -50,7 +47,7 @@ class RectifiedFlow:
             y_val = y_val.long()
         else:
             y_val = None
-        
+        dt = 1/N
         for delta_time in tqdm(torch.linspace(0.0, 1.0, N, device=self.device), desc="Sampling RF", total=N):
             t = torch.ones((num_samples,1),device=self.device) * delta_time
             if y is not None:
@@ -60,9 +57,13 @@ class RectifiedFlow:
             else:
                 pred = self.model(z, t, y=y_val)
 
+            # t = t.view(-1, 1, 1, 1)
+            # z = (1 - t) * pred +  t* z
+
+            t = torch.ones((num_samples,1),device=self.device) * dt
             t = t.view(-1, 1, 1, 1)
-            z = (1 - t) * pred +  t* z
-            # z = z + t*pred
+            # z = (1 - t) * pred +  t* z
+            z = z + t*pred
 
         return z
 

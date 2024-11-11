@@ -3,10 +3,28 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torchvision import datasets, transforms
-from dit import DiT, get_s_model, get_m_model
+from dit import DiT, ModelConfig, get_s_model, get_m_model
 from rectified_flow import RectifiedFlow
 from tqdm import tqdm
 import os
+
+def generate_and_plot_samples(img_size, num_timesteps, in_channels, diffusion):
+    samples = diffusion.generate((4, in_channels, img_size, img_size), num_sample_timesteps=25)
+    # min_val = torch.min(samples.view((samples.shape[0],-1)), dim=1)[0]
+    # max_val = torch.max(samples.view((samples.shape[0],-1)), dim=1)[0]
+    # samples = (samples - min_val.view((samples.shape[0],1,1,1))) / (max_val - min_val).view((samples.shape[0],1,1,1))
+    
+    samples = samples.reshape((4, img_size, img_size, 3)) # 
+    samples = (samples + 1) / 2
+    samples = torch.clamp(samples, 0, 1)
+    os.makedirs("plots", exist_ok=True)
+    imgs = samples.cpu().numpy().squeeze()
+    for i, img in enumerate(imgs):
+        plt.imshow(img)
+        plt.axis("off")
+        plt.savefig(f"plots/sample_{i}.png", bbox_inches="tight")
+
+
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
@@ -14,31 +32,46 @@ torch.manual_seed(0)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Load MNIST dataset
-transform = transforms.Compose([transforms.ToTensor(), transforms.Lambda(lambda x: x * 2 - 1)])
+
+img_size = 128
+
+
+transforms = transforms.Compose([
+	transforms.Resize(256),
+    transforms.RandomCrop(img_size),
+	transforms.ToTensor(),
+	transforms.Lambda(lambda x: x * 2 - 1)
+    # transforms.Normalize([0.485, 0.456, 0.406], # RGB mean & std estied on ImageNet
+	# 					 [0.229, 0.224, 0.225])
+])
 cwd = os.path.dirname(__file__)
 data_path = os.path.join(cwd, "data")
-train_dataset = datasets.MNIST(data_path, download=True, train=True, transform=transform)
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
-val_dataset = datasets.MNIST(data_path, download=True, train=False, transform=transform)
-val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=False)
+# Dont know why but test is much larger than train?
+train_dataset = datasets.Flowers102(data_path, download=True, split="test", transform=transforms)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
+val_dataset = datasets.Flowers102(data_path, download=True, split="train", transform=transforms)
+val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=32, shuffle=False)
 
-diffusion_steps = 1000
 num_timesteps = 1000
-num_classes = 10
-model_cfg = get_s_model(num_timesteps=num_timesteps, num_classes=num_classes, t_continuous=True)
+num_classes = 102 
+in_channels = 3
+model_cfg =  ModelConfig(input_size=img_size, patch_size=8, in_channels=in_channels, hidden_size=256, depth=8, num_heads=8, class_dropout_prob=0.1,  t_continuous=True, num_classes=num_classes, num_timesteps=num_timesteps) 
 model = DiT(model_cfg).to(device)
 start_epoch = 0 
-# model, checkpoint = DiT.load("checkpoints/model-3.pt")
+# model, checkpoint = DiT.load("checkpoints/flowers102/model-12.pt")
 # start_epoch = checkpoint.get("epoch",-1) + 1
 model = model.to(device)
 diffusion = RectifiedFlow(model, num_timesteps=num_timesteps, device=device)
-ckpt_path = os.path.join(cwd, "checkpoints", "mnist")
+
+generate_and_plot_samples(img_size, num_timesteps, in_channels, diffusion)
+
+ckpt_path = os.path.join(cwd, "checkpoints", "flowers102")
 os.makedirs(ckpt_path, exist_ok=True)
 # Train model
 print(model.get_number_parameters())
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.1)
 old_loss = 100
+
 for epoch in range(start_epoch,20):
     model.train()
     train_losses = []
@@ -74,12 +107,6 @@ for epoch in range(start_epoch,20):
         
         model.save(os.path.join(ckpt_path, f"model-{epoch+1}.pt"), **{"train_loss": old_loss, "epoch": epoch})
         
-        samples = diffusion.generate((4, 1, 28, 28), num_sample_timesteps=num_timesteps)
-        os.makedirs("plots", exist_ok=True)
-        imgs = samples.cpu().numpy().squeeze()
-        for i, img in enumerate(imgs):
-            plt.imshow(img, cmap="gray")
-            plt.axis("off")
-            plt.savefig(f"plots/sample_{i}.png", bbox_inches="tight")
+        generate_and_plot_samples(img_size, num_timesteps, in_channels, diffusion)
         
 

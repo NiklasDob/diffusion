@@ -18,26 +18,25 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 transform = transforms.Compose([transforms.ToTensor(), transforms.Lambda(lambda x: x * 2 - 1)])
 cwd = os.path.dirname(__file__)
 data_path = os.path.join(cwd, "data")
-train_dataset = datasets.MNIST(data_path, download=True, train=True, transform=transform)
+train_dataset = datasets.CIFAR10(data_path, download=True, train=True, transform=transform)
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
-val_dataset = datasets.MNIST(data_path, download=True, train=False, transform=transform)
+val_dataset = datasets.CIFAR10(data_path, download=True, train=False, transform=transform)
 val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=False)
 
-diffusion_steps = 1000
 num_timesteps = 1000
 num_classes = 10
-model_cfg = get_s_model(num_timesteps=num_timesteps, num_classes=num_classes, t_continuous=True)
+model_cfg = get_m_model(num_timesteps=num_timesteps, num_classes=num_classes, in_channels=3, t_continuous=True, input_size=32)
 model = DiT(model_cfg).to(device)
 start_epoch = 0 
-# model, checkpoint = DiT.load("checkpoints/model-3.pt")
-# start_epoch = checkpoint.get("epoch",-1) + 1
+model, checkpoint = DiT.load("checkpoints/cifar10/model-7.pt")
+start_epoch = checkpoint.get("epoch",-1) + 1
 model = model.to(device)
 diffusion = RectifiedFlow(model, num_timesteps=num_timesteps, device=device)
-ckpt_path = os.path.join(cwd, "checkpoints", "mnist")
+ckpt_path = os.path.join(cwd, "checkpoints", "cifar10")
 os.makedirs(ckpt_path, exist_ok=True)
 # Train model
 print(model.get_number_parameters())
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.1)
+optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, weight_decay=0.1)
 old_loss = 100
 for epoch in range(start_epoch,20):
     model.train()
@@ -46,7 +45,6 @@ for epoch in range(start_epoch,20):
         optimizer.zero_grad()
         
         img, label = img.to(device), label.long().to(device)
-        
         loss = diffusion.train_step(img, y=label)
         loss.backward()
         train_losses.append(loss.item())
@@ -74,9 +72,11 @@ for epoch in range(start_epoch,20):
         
         model.save(os.path.join(ckpt_path, f"model-{epoch+1}.pt"), **{"train_loss": old_loss, "epoch": epoch})
         
-        samples = diffusion.generate((4, 1, 28, 28), num_sample_timesteps=num_timesteps)
+        samples = diffusion.generate((4, 3, 32, 32), num_sample_timesteps=num_timesteps)
+        samples = (samples + 1) / 2
+        samples = torch.clamp(samples, 0, 1)
         os.makedirs("plots", exist_ok=True)
-        imgs = samples.cpu().numpy().squeeze()
+        imgs = samples.permute(0, 2, 3, 1).cpu().numpy().squeeze()
         for i, img in enumerate(imgs):
             plt.imshow(img, cmap="gray")
             plt.axis("off")

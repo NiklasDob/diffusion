@@ -2,3 +2,5 @@
 *.pt
 *.gz
 data/
+*.pyc
+__pycache__

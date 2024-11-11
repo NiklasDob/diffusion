@@ -17,6 +17,9 @@ class ModelConfig:
     num_timesteps: int
     t_continuous: bool
 
+def get_m_model(input_size=28, in_channels=1, **kwargs):
+    return ModelConfig(input_size=input_size, patch_size=2, in_channels=in_channels, hidden_size=128, depth=8, num_heads=8, class_dropout_prob=0.1, **kwargs)
+
 def get_s_model(input_size=28, in_channels=1, **kwargs):
     return ModelConfig(input_size=input_size, patch_size=4, in_channels=in_channels, hidden_size=128, depth=4, num_heads=8, class_dropout_prob=0.1, **kwargs)
 
