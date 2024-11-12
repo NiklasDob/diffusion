@@ -1,8 +1,20 @@
+import abc
 import torch
 from tqdm import tqdm
 import torch.nn.functional as F
 
-class GaussianDiffusion:
+
+class Diffusion(abc.ABC):
+    
+    @abc.abstractmethod
+    def train_step(self, x_0, y = None):
+        pass
+
+    @abc.abstractmethod
+    def generate(self, input_shape = [4, 3, 32, 32], num_sample_timesteps : int = None, y : int=None, classifier_guidance_strength : float=4.0):
+        pass
+
+class GaussianDiffusion(Diffusion):
     def __init__(self, device, model, num_timesteps=1000, beta_start=1e-4, beta_end=0.2, clip_sample=True):
         self.device = device
         self.model = model.to(device)

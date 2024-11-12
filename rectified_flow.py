@@ -4,7 +4,9 @@ import torch.nn as nn
 from torch.nn import functional as F
 from tqdm import tqdm
 
-class RectifiedFlow:
+from diffusion import Diffusion
+
+class RectifiedFlow(Diffusion):
     def __init__(self, model : nn.Module , num_timesteps = 1000, device = "cpu"):
         self.model = model
         self.num_timesteps = num_timesteps
