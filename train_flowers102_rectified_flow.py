@@ -14,9 +14,9 @@ def generate_and_plot_samples(img_size, num_timesteps, in_channels, diffusion):
     # max_val = torch.max(samples.view((samples.shape[0],-1)), dim=1)[0]
     # samples = (samples - min_val.view((samples.shape[0],1,1,1))) / (max_val - min_val).view((samples.shape[0],1,1,1))
     
-    samples = samples.reshape((4, img_size, img_size, 3)) # 
+    samples = samples.permute(0, 2, 3, 1)
+    samples = torch.clamp(samples, -1, 1)
     samples = (samples + 1) / 2
-    samples = torch.clamp(samples, 0, 1)
     os.makedirs("plots", exist_ok=True)
     imgs = samples.cpu().numpy().squeeze()
     for i, img in enumerate(imgs):
@@ -41,21 +41,19 @@ transforms = transforms.Compose([
     transforms.RandomCrop(img_size),
 	transforms.ToTensor(),
 	transforms.Lambda(lambda x: x * 2 - 1)
-    # transforms.Normalize([0.485, 0.456, 0.406], # RGB mean & std estied on ImageNet
-	# 					 [0.229, 0.224, 0.225])
 ])
 cwd = os.path.dirname(__file__)
 data_path = os.path.join(cwd, "data")
 # Dont know why but test is much larger than train?
 train_dataset = datasets.Flowers102(data_path, download=True, split="test", transform=transforms)
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=16, shuffle=True)
 val_dataset = datasets.Flowers102(data_path, download=True, split="train", transform=transforms)
-val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=32, shuffle=False)
+val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=16, shuffle=False)
 
 num_timesteps = 1000
 num_classes = 102 
 in_channels = 3
-model_cfg =  ModelConfig(input_size=img_size, patch_size=8, in_channels=in_channels, hidden_size=256, depth=8, num_heads=8, class_dropout_prob=0.1,  t_continuous=True, num_classes=num_classes, num_timesteps=num_timesteps) 
+model_cfg =  ModelConfig(input_size=img_size, patch_size=4, in_channels=in_channels, hidden_size=128, depth=8, num_heads=8, class_dropout_prob=0.1,  t_continuous=True, num_classes=num_classes, num_timesteps=num_timesteps) 
 model = DiT(model_cfg).to(device)
 start_epoch = 0 
 # model, checkpoint = DiT.load("checkpoints/flowers102/model-12.pt")

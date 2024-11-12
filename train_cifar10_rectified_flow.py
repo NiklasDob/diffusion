@@ -25,11 +25,11 @@ val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=Fal
 
 num_timesteps = 1000
 num_classes = 10
-model_cfg = get_m_model(num_timesteps=num_timesteps, num_classes=num_classes, in_channels=3, t_continuous=True, input_size=32)
+model_cfg = get_s_model(num_timesteps=num_timesteps, num_classes=num_classes, in_channels=3, t_continuous=True, input_size=32)
 model = DiT(model_cfg).to(device)
 start_epoch = 0 
-model, checkpoint = DiT.load("checkpoints/cifar10/model-7.pt")
-start_epoch = checkpoint.get("epoch",-1) + 1
+# model, checkpoint = DiT.load("checkpoints/cifar10/model-7.pt")
+# start_epoch = checkpoint.get("epoch",-1) + 1
 model = model.to(device)
 diffusion = RectifiedFlow(model, num_timesteps=num_timesteps, device=device)
 ckpt_path = os.path.join(cwd, "checkpoints", "cifar10")

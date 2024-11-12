@@ -60,10 +60,10 @@ class RectifiedFlow:
             # t = t.view(-1, 1, 1, 1)
             # z = (1 - t) * pred +  t* z
 
-            t = torch.ones((num_samples,1),device=self.device) * dt
-            t = t.view(-1, 1, 1, 1)
+            # t = torch.ones((num_samples,1),device=self.device) * dt
+            # t = t.view(-1, 1, 1, 1)
             # z = (1 - t) * pred +  t* z
-            z = z + t*pred
+            z = z + dt*pred
 
         return z
 
